@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tobadem POS - Remote Admin Dashboard</title>
+    <!-- Tailwind CSS for clean, professional styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+  <body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+    <!-- LOGIN SCREEN -->
+    <div
+      id="login-screen"
+      class="flex items-center justify-center min-h-screen px-4"
+    >
+      <div
+        class="bg-slate-800 p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-700"
+      >
+        <h2 class="text-2xl font-bold text-center mb-2 text-amber-400">
+          Tobadem POS
+        </h2>
+        <p class="text-sm text-slate-400 text-center mb-6">
+          Enter your Store ID to monitor live sales
+        </p>
+
+        <form id="login-form" onsubmit="handleLogin(event)">
+          <div class="mb-4">
+            <label
+              class="block text-xs font-semibold uppercase text-slate-300 mb-2"
+              >Store ID / Access Code</label
+            >
+            <input
+              type="text"
+              id="store-id-input"
+              required
+              placeholder="e.g. TOBADEM-STORE-01"
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-amber-400"
+            />
+          </div>
+          <button
+            type="submit"
+            class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-3 rounded-lg transition-colors"
+          >
+            Access Dashboard
+          </button>
+        </form>
+        <p
+          id="login-error"
+          class="text-red-400 text-sm mt-4 text-center hidden"
+        ></p>
+      </div>
+    </div>
+
+    <!-- DASHBOARD SCREEN (Hidden by default) -->
+    <div id="dashboard-screen" class="hidden min-h-screen p-6 md:p-10">
+      <header
+        class="flex justify-between items-center mb-8 bg-slate-800 p-6 rounded-2xl border border-slate-700"
+      >
+        <div>
+          <h1 class="text-2xl font-bold text-white">
+            Store Monitoring Dashboard
+          </h1>
+          <p class="text-sm text-slate-400">
+            Logged in Store:
+            <span
+              id="active-store-display"
+              class="text-amber-400 font-mono"
+            ></span>
+          </p>
+        </div>
+        <button
+          onclick="handleLogout()"
+          class="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm font-semibold transition-colors border border-red-500/20"
+        >
+          Log Out
+        </button>
+      </header>
+
+      <!-- METRICS CARDS -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700">
+          <p class="text-sm text-slate-400 mb-1 font-medium">Total Revenue</p>
+          <h3
+            id="total-revenue"
+            class="text-3xl font-extrabold text-emerald-400"
+          >
+            ₦0.00
+          </h3>
+        </div>
+        <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700">
+          <p class="text-sm text-slate-400 mb-1 font-medium">
+            Total Transactions
+          </p>
+          <h3
+            id="total-transactions"
+            class="text-3xl font-extrabold text-white"
+          >
+            0
+          </h3>
+        </div>
+        <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700">
+          <p class="text-sm text-slate-400 mb-1 font-medium">
+            Cash Sales Ratio
+          </p>
+          <h3 id="cash-ratio" class="text-3xl font-extrabold text-amber-400">
+            0%
+          </h3>
+        </div>
+      </div>
+
+      <!-- RECENT TRANSACTIONS TABLE -->
+      <div
+        class="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden"
+      >
+        <div
+          class="p-6 border-b border-slate-700 flex justify-between items-center"
+        >
+          <h3 class="text-lg font-bold text-white">Live Sales Feed</h3>
+          <button
+            onclick="loadSalesData()"
+            class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg text-slate-300 transition-colors"
+          >
+            Refresh Data
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr
+                class="bg-slate-900/50 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700"
+              >
+                <th class="p-4">Transaction ID</th>
+                <th class="p-4">Cashier</th>
+                <th class="p-4">Amount</th>
+                <th class="p-4">Payment Method</th>
+                <th class="p-4">Time</th>
+              </tr>
+            </thead>
+            <tbody
+              id="sales-table-body"
+              class="divide-y divide-slate-700/50 text-sm"
+            >
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Supabase Configuration
+      const SUPABASE_URL = "https://esgszouxueqpgepwpyqk.supabase.co";
+      const SUPABASE_ANON_KEY =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVzZ3N6b3V4dWVxcGdlcHdweXFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMjE4MTYsImV4cCI6MjEwMjg5NzgxNn0.ullcb5NuaENW8577va_FyFDsGw6pO1GPDt2WfgG_6GE";
+
+      const supabaseClient = supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_ANON_KEY,
+      );
+
+      async function handleLogin(event) {
+        event.preventDefault();
+        hideError();
+        const storeId = document.getElementById("store-id-input").value.trim();
+
+        if (!storeId) {
+          showError("Please enter a valid Store ID.");
+          return;
+        }
+
+        try {
+          // Verify store_id in Supabase
+          const { data, error } = await supabaseClient
+            .from("stores")
+            .select("*")
+            .eq("store_id", storeId)
+            .single();
+
+          if (error || !data) {
+            showError("Invalid Store ID. Access denied.");
+            return;
+          }
+
+          if (data.is_active === false) {
+            showError("This store account has been deactivated.");
+            return;
+          }
+
+          // Successful authentication
+          const displayName = data.store_name
+            ? `${data.store_name} (${data.store_id})`
+            : data.store_id;
+          sessionStorage.setItem("active_store_id", data.store_id);
+          sessionStorage.setItem("active_store_name", displayName);
+
+          document.getElementById("active-store-display").innerText =
+            displayName;
+          document.getElementById("login-screen").classList.add("hidden");
+          document
+            .getElementById("dashboard-screen")
+            .classList.remove("hidden");
+
+          loadSalesData();
+        } catch (err) {
+          console.error("Login error:", err);
+          showError("An error occurred during verification. Try again.");
+        }
+      }
+
+      function handleLogout() {
+        sessionStorage.removeItem("active_store_id");
+        sessionStorage.removeItem("active_store_name");
+        document.getElementById("dashboard-screen").classList.add("hidden");
+        document.getElementById("login-screen").classList.remove("hidden");
+        document.getElementById("store-id-input").value = "";
+        hideError();
+      }
+
+      function showError(msg) {
+        const errEl = document.getElementById("login-error");
+        errEl.innerText = msg;
+        errEl.classList.remove("hidden");
+      }
+
+      function hideError() {
+        const errEl = document.getElementById("login-error");
+        errEl.innerText = "";
+        errEl.classList.add("hidden");
+      }
+
+      async function loadSalesData() {
+        try {
+          const { data, error } = await supabaseClient
+            .from("sales")
+            .select("*")
+            .order("created_at", { ascending: false });
+
+          if (error) {
+            console.error("Error fetching sales:", error.message);
+            return;
+          }
+
+          renderDashboardMetrics(data || []);
+        } catch (err) {
+          console.error("Failed to load sales data:", err);
+        }
+      }
+
+      function renderDashboardMetrics(sales) {
+        // Total Revenue Calculation
+        const totalRevenue = sales.reduce(
+          (acc, curr) => acc + Number(curr.total_amount || 0),
+          0,
+        );
+        document.getElementById("total-revenue").innerText =
+          `₦${totalRevenue.toLocaleString()}`;
+        document.getElementById("total-transactions").innerText = sales.length;
+
+        // Cash Ratio Calculation
+        const cashSalesCount = sales.filter(
+          (s) => (s.payment_method || "").toLowerCase() === "cash",
+        ).length;
+        const cashRatio =
+          sales.length > 0
+            ? Math.round((cashSalesCount / sales.length) * 100)
+            : 0;
+        document.getElementById("cash-ratio").innerText = `${cashRatio}%`;
+
+        // Populate Table
+        const tbody = document.getElementById("sales-table-body");
+        tbody.innerHTML = "";
+
+        if (sales.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-500">No sales recorded yet.</td></tr>`;
+          return;
+        }
+
+        sales.forEach((sale) => {
+          const tr = document.createElement("tr");
+          tr.className = "hover:bg-slate-700/30 transition-colors";
+          tr.innerHTML = `
+            <td class="p-4 font-mono text-xs text-slate-400">${sale.id ? sale.id.substring(0, 12) : "N/A"}...</td>
+            <td class="p-4 font-medium text-white">${sale.cashier_id || "Unknown"}</td>
+            <td class="p-4 font-bold text-emerald-400">₦${Number(sale.total_amount || 0).toLocaleString()}</td>
+            <td class="p-4"><span class="bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-full text-xs font-semibold">${sale.payment_method || "N/A"}</span></td>
+            <td class="p-4 text-slate-400 text-xs">${sale.created_at ? new Date(sale.created_at).toLocaleString() : "N/A"}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      // Auto-login session verification
+      window.onload = async () => {
+        const storedStoreId = sessionStorage.getItem("active_store_id");
+        if (storedStoreId) {
+          try {
+            const { data } = await supabaseClient
+              .from("stores")
+              .select("*")
+              .eq("store_id", storedStoreId)
+              .single();
+
+            if (data && data.is_active !== false) {
+              const displayName =
+                sessionStorage.getItem("active_store_name") || storedStoreId;
+              document.getElementById("active-store-display").innerText =
+                displayName;
+              document.getElementById("login-screen").classList.add("hidden");
+              document
+                .getElementById("dashboard-screen")
+                .classList.remove("hidden");
+              loadSalesData();
+              return;
+            }
+          } catch (e) {
+            console.error("Session verification failed", e);
+          }
+          // Clear invalid session
+          handleLogout();
+        }
+      };
+    </script>
+  </body>
+</html>
